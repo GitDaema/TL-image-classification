@@ -1,0 +1,42 @@
+### [Data & Assets] ###
+# 용량이 큰 데이터셋 폴더들
+data/
+ani/
+*.zip
+*.tar.gz
+
+### [Python / ML Artifacts] ###
+# 파이썬 실행 시 생성되는 캐시
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 학습된 모델 가중치 파일 (깃허브 용량 초과 방지)
+# !best_model.pth 로 예외 설정 가능
+*.pth
+*.pt
+*.h5
+*.weights
+
+### [Environments] ###
+# 가상환경 폴더들
+.venv/
+venv/
+env/
+anaconda3/
+.conda/
+
+### [Jupyter Notebook] ###
+# 주피터 자동 저장 체크포인트
+.ipynb_checkpoints/
+# 커널 관련 임시 파일
+.jovian/
+
+### [IDE / OS Junk] ###
+# VS Code 관련 설정 (개인별 경로가 다를 수 있어 공유 안 하는 게 좋음)
+.vscode/
+.history/
+
+# 운영체제 생성 쓰레기 파일 (맥 사용자가 코드를 받을 때를 대비)
+.DS_Store
+Thumbs.db
