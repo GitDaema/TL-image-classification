@@ -4,16 +4,15 @@ class Trainer:
     """
     모델, 설정, 손실 함수, 옵티마이저를 받아와 모델 학습 및 평가를 진행하는 클래스
     """
-    def __init__(self, model, setting, criterion, optimizer):
+    def __init__(self, model, device, criterion, optimizer):
         # to(장치)로 모델을 설정에서 정한 최적의 장치로 보냄
-        self.model = model.to(setting.DEVICE)
-        self.setting = setting
+        self.model = model.to(device)
+        self.device = device
         self.criterion = criterion
         self.optimizer = optimizer
 
     def train_epoch(self, loader):
-        """
-        모델 학습용 로더를 가져와 한 에포크를 학습하고 평균 오차와 정확도를 반환하는 메서드
+        """ 모델 학습용 로더를 가져와 한 에포크를 학습하고 평균 오차와 정확도를 반환하는 메서드
         """
 
         # 모델을 학습 모드로 설정해 드롭아웃 등을 활성화
@@ -22,7 +21,6 @@ class Trainer:
         # 총 오차와 총 정답 수 초기화
         loss_sum, answer_sum = 0.0, 0
         
-
         """ 참고한 구조
         컴퓨터 비전을 위한 전이 학습 튜토리얼 - 파이토치 공식 튜토리얼
         https://docs.pytorch.org/tutorials/beginner/transfer_learning_tutorial.html
@@ -32,7 +30,7 @@ class Trainer:
         # 로더에서 이미지(입력)와 정답(레이블)을 배치 단위로 받아서 하나씩 훑기
         for inputs, labels in loader:
             # 마찬가지로 to()를 이용해 데이터를 설정한 장치로 보내기
-            inputs, labels = inputs.to(self.setting.DEVICE), labels.to(self.setting.DEVICE)
+            inputs, labels = inputs.to(self.device), labels.to(self.device)
             
             # 1. 이전 배치의 계산 결과가 영향을 주지 않도록 기울기 초기화
             self.optimizer.zero_grad()
@@ -67,8 +65,7 @@ class Trainer:
         return loss_sum / len(loader.dataset), answer_sum.double() / len(loader.dataset)
 
     def evaluate(self, loader):
-        """
-        모델 평가용 로더를 가져와 한 에포크의 평균 오차와 정확도를 반환하는 메서드
+        """ 모델 평가용 로더를 가져와 한 에포크의 평균 오차와 정확도를 반환하는 메서드
         """
 
         # 모델을 평가 모드로 설정
@@ -82,7 +79,7 @@ class Trainer:
         with torch.no_grad():
             # 나머지는 학습 과정에서 '학습에만 필요한 단계'를 뺀 것과 동일
             for inputs, labels in loader:
-                inputs, labels = inputs.to(self.setting.DEVICE), labels.to(self.setting.DEVICE)
+                inputs, labels = inputs.to(self.device), labels.to(self.device)
                 
                 outputs = self.model(inputs)
                 loss = self.criterion(outputs, labels)
