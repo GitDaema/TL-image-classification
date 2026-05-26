@@ -39,6 +39,13 @@ else:
     layer_state_string = "동결(마지막 레이어만 unfreeze)"
 print(f"학습 방식: {layer_state_string}")
 
+if settings.CAN_USE_SCHEDULER:
+    print(f"학습률 스케줄러: 적용(factor: {settings.SCHEDULER_FACTOR}, patience: {settings.SCHEDULER_PATIENCE})")
+else:
+    print(f"학습률 스케줄러: 미적용")
+
+print(f"데이터 증대: {'적용' if settings.CAN_USE_AUGMENTATION else '미적용'}")
+
 for name in settings.MODEL_NAME_LIST:
     print(f"\n--- {name} 모델 실험 시작 ---")
     
@@ -74,6 +81,12 @@ for name in settings.MODEL_NAME_LIST:
     # 옵티마이저로 Adam을 쓴 버전, SGD와 바꿔가며 테스트
     optimizer = optim.Adam(param_list, lr=settings.LEARNING_RATE, weight_decay=settings.WEIGHT_DECAY)
 
+    if settings.CAN_USE_SCHEDULER:
+        # 학습률 스케줄러를 이용하면 성능 개선이 안 될 때 중간에 학습률을 자동으로 낮춰줄 수 있음
+        # factor는 학습률 감소 비율(배수), patience는 val loss가 몇 에포크 동안 안 줄어들면 학습률을 줄일지를 나타냄
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=settings.SCHEDULER_FACTOR 
+                                                                            , patience=settings.SCHEDULER_PATIENCE)
+
     # 학습용 엔진에 모델, 설정, 손실 함수, 옵티마이저를 전달해 객체 생성
     trainer = Trainer(model, device, criterion, optimizer)
 
@@ -104,6 +117,9 @@ for name in settings.MODEL_NAME_LIST:
         # 그 다음 가중치 수정 없이 현재 모델 평가 후 평균 오차와 정확도 출력
         val_loss, val_acc = trainer.evaluate(val_loader)
         print(f"[ Val ] Loss: {val_loss:.3f} | Acc: {val_acc * 100:.3f}%")
+
+        if settings.CAN_USE_SCHEDULER:
+            scheduler.step(val_loss) # val loss를 기준으로 학습률을 조정하겠다는 뜻
 
         if settings.CAN_DRAW_PLOT:
             history['train_loss'].append(train_loss)

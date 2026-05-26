@@ -67,7 +67,7 @@ WEIGHT_DECAY = 0.05 # 옵티마이저에 적용할 가중치 감쇠 정도
 LABEL_SMOOTHING = 0.1 # 손실 함수에 적용할 레이블 스무딩 비율
 
 # 조기 종료 = val loss의 최솟값 갱신을 n회 이상 못하면 의미 없는 학습이라 판단하고 중단하는 기능
-EARLY_STOP_PATIENCE = 15
+EARLY_STOP_PATIENCE = 15 # val loss가 몇 번 안 줄어들면 중단할지 횟수
 
 # 기본적인 레이어 가중치 동결 여부(동결하지 않으면 미세 조정 방식)
 # 동결해도 마지막 레이어는 학습 가능한 상태로 열려 있음
@@ -75,5 +75,13 @@ CAN_FREEZE_LAYERS = True
 
 # 미리 정해 놓은 추가 레이어 재학습 가능 적용 여부(얼리지 않고 더 많이 부분 미세 조정)
 CAN_GRAD_MORE_LAYERS = True
+
+# 학습이 정체되면 학습률을 자동으로 낮춰주는 학습률 스케줄러 적용 여부
+CAN_USE_SCHEDULER = True 
+SCHEDULER_FACTOR = 0.5 # 학습률 감소 비율(배수)
+SCHEDULER_PATIENCE = 5 # val loss가 몇 에포크 동안 안 줄어들면 학습률 낮출지 횟수
+
+# 주어진 데이터를 좌우 반전, 회전 등 인위적으로 늘리는 데이터 증대 적용 여부
+CAN_USE_AUGMENTATION = True
 
 CAN_DRAW_PLOT = False # 임시 그래프 그리기 기능 온오프

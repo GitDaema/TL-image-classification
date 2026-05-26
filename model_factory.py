@@ -73,7 +73,35 @@ class ModelFactory:
         # 아까 선택한 가중치가 학습될 때 쓴 모든 전처리 규칙, 즉 표준 규칙을 가져와 저장
         weights_transforms = weights.transforms() 
 
-        train_transform = weights_transforms
-        val_transform = weights_transforms
+        if settings.CAN_USE_AUGMENTATION:
+            # 온갖 데이터 증대를 하더라도 마지막에는 표준 양식으로 돌아와야 함
+            # 따라서 ToTensor(0 ~ 255를 0.0 ~ 1.0으로), 그리고 정규화(펑균 0, 표준편차 1)를 거침
+            # 정규화할 때 원래는 ImageNet 표준 정규화 기본값으로 다음과 같이 작성
+            # transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            # 하지만 전처리 객체에서 정규화 정보를 바로 가져올 수도 있음
+            normalize = transforms.Normalize(mean=weights_transforms.mean, std=weights_transforms.std)
+
+            # transform.Compose는 여러 전처리 및 데이터 증강 기법을 하나의 파이프라인으로 묶어주는 객체
+            # 안에 들어간 리스트에 적힌 순서대로 적용되니 주의, ToTensor, 정규화 맨 뒤로
+            # Resize는 여러 이미지를 동일 행렬 모양으로 묶어 계산하면서, 최종 분류층의 고정 입력에 맞추기 위함
+            # 224인 이유는 반으로 계속 나누어도 딱 떨어지다가 마지막에 홀수인 7이 남아서 사진의 정중앙을 찾을 수 있기 때문 
+            train_transform = transforms.Compose([
+                transforms.Resize((224, 224)),
+                transforms.RandomHorizontalFlip(p=0.5), # 좌우 반전, p는 확률(0.0 ~ 1.0)
+                transforms.RandomRotation(degrees=15), # 이미지 회전, -degrees ~ degrees 사이 회전각 랜덤
+                transforms.ToTensor(),
+                normalize
+            ])
+            # val 때도 마찬가지로 Resize로 최종 분류층을 위한 크기 통일은 필수
+            # 하지만 검증에 쓸 문제 이미지를 무작위로 변형하면 매번 정확도가 불안정해져서 성능을 제대로 측정할 수 없음
+            # 따라서 좌우 반전이나 회전 같은 증대 기법을 val에서 사용해서는 안 됨  
+            val_transform = transforms.Compose([
+                transforms.Resize((224, 224)),
+                transforms.ToTensor(),
+                normalize
+            ])
+        else:
+            train_transform = weights_transforms
+            val_transform = weights_transforms
 
         return model, train_transform, val_transform
