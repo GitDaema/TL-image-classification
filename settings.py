@@ -12,7 +12,11 @@ DIR_DICT = {
 }
 
 # 경로 설정
-TRAIN_DIR, VAL_DIR = DIR_DICT['ani']
+DATA_SET_NAME = 'ani'
+TRAIN_DIR, VAL_DIR = DIR_DICT[DATA_SET_NAME]
+
+SAVED_MODELS_FOLDER_NAME = "my_models"
+LOADING_MODEL_NAME = ""
 
 # 테스트할 모델 리스트
 MODEL_NAME_LIST = ['resnet50'] # , 'densenet121']
