@@ -1,3 +1,4 @@
+from PIL import Image
 from torchvision import datasets
 from torch.utils.data import DataLoader
 import settings
@@ -30,7 +31,7 @@ class DataManager:
         return self._data_size
     
     @property
-    def data_size(self):
+    def classes(self):
         return self._classes
 
     def get_loaders(self, train_transform, val_transform):

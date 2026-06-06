@@ -7,9 +7,12 @@ import visualizer
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.utils.data import DataLoader, WeightedRandomSampler
 
 import copy
 import os
+
+import numpy as np
 
 # 장치 기본값은 일단 CPU
 device_name = "cpu"
@@ -28,30 +31,15 @@ device = torch.device(device_name)
 
 data_manager = DataManager()
 
-print(f"이미지: {data_manager._data_size} 장, 클래스 개수: {data_manager.num_classes} 개")
-print(f"학습률: {settings.LEARNING_RATE}")
-print(f"드롭아웃 비율: {settings.DROPOUT_RATE}, 가중치 감쇠 정도: {settings.WEIGHT_DECAY}")
-print(f"레이블 스무딩 비율: {settings.LABEL_SMOOTHING}")
-if not settings.CAN_FREEZE_LAYERS:
-    layer_state_string = "미세 조정(전부 unfreeze)"
-elif settings.CAN_GRAD_MORE_LAYERS:
-    layer_state_string = "부분 미세 조정(몇몇 지정 레이어들만 unfreeze)"
-else:
-    layer_state_string = "동결(마지막 레이어만 unfreeze)"
-print(f"학습 방식: {layer_state_string}")
-
-if settings.CAN_USE_SCHEDULER:
-    print(f"학습률 스케줄러: 적용(factor: {settings.SCHEDULER_FACTOR}, patience: {settings.SCHEDULER_PATIENCE})")
-else:
-    print(f"학습률 스케줄러: 미적용")
-
-print(f"데이터 증대: {'적용' if settings.CAN_USE_AUGMENTATION else '미적용'}")
+print(f"데이터셋 이름: {settings.DATA_SET_NAME}, 이미지: {data_manager.data_size} 장, 클래스 개수: {data_manager.num_classes} 개")
 
 for cur_model_name in settings.MODEL_NAME_LIST:
     print(f"\n--- {cur_model_name} 모델 실험 시작 ---")
     
     # 모델과 전처리 규칙을 가져옴
     model, train_transform, val_transform = ModelFactory.create_model_and_transforms(cur_model_name, data_manager.num_classes)
+
+    # model, train_transform, val_transform = ModelFactory.new_create_model_and_transforms(cur_model_name, data_manager.num_classes, settings.NUM_CHANNELS)
     
     # 가져온 전처리 규칙으로 데이터를 모델 학습용 및 평가용으로 가공한 객체인 로더를 가져옴
     train_loader, val_loader = data_manager.get_loaders(train_transform, val_transform)
@@ -60,6 +48,41 @@ for cur_model_name in settings.MODEL_NAME_LIST:
     # 학습 중에 이 값을 최소화하려고 하며, 예측과 정답을 비교해 손실을 계산
     # 모델 매개변수 최적화하기 - 파이토치 한국어 튜토리얼
     # https://tutorials.pytorch.kr/beginner/basics/optimization_tutorial.html
+
+    # 데이터가 적은 것도 잘 학습하도록 가중치 조절
+    target_list = train_loader.dataset.targets # 모든 정답 레이블 리스트 형태로 가져오기
+    class_counts = np.bincount(target_list) # 각 클래스별 개수를 넘파이 배열로 가져오기
+
+    weights = 1.0 / class_counts # 데이터가 적을수록 가중치가 높게 설정되도록 역수 취하기
+
+    # PyTorch에서 클래스 불균형 문제 해결하기 - Kaggle
+    # https://www.kaggle.com/code/syzygyfy/addressing-the-class-imbalance-in-pytorch
+    if settings.CAN_USE_OVERSAMPLING:
+        # 각 데이터 샘플마다 부여될 가중치 배열 생성
+        samples_weight = np.array([weights[t] for t in target_list])
+        samples_weight = torch.from_numpy(samples_weight).double()
+        
+        # 원본 데이터 수 * 배수로 총 데이터 수 계산
+        total_num_samples = len(target_list) * settings.SAMPLER_MULTIPLIER
+        
+        # 덮어씌울 샘플러 새로 생성할 때 replacement=True로 중복 뽑기 허용
+        sampler = WeightedRandomSampler(weights=samples_weight, num_samples=total_num_samples, replacement=True)
+        
+        # 기존 로더의 속성은 그대로 유지한 채 샘플러만 교체하여 덮어쓰기
+        train_loader = DataLoader(
+            train_loader.dataset, 
+            batch_size=train_loader.batch_size, 
+            sampler=sampler,
+            num_workers=getattr(train_loader, 'num_workers', 0), 
+            pin_memory=getattr(train_loader, 'pin_memory', False)
+        )
+        print(f"오버샘플링 적용 중: 이미지 {settings.SAMPLER_MULTIPLIER}배, 총 {total_num_samples}장")
+
+    # 가중치 배열을 파이토치로 변환하고 현재 장치로 이동
+    class_weights = torch.FloatTensor(weights).to(device) 
+
+    # 조절된 가중치 반영
+    # criterion = nn.CrossEntropyLoss(weight = class_weights, label_smoothing=settings.LABEL_SMOOTHING)
 
     criterion = nn.CrossEntropyLoss(label_smoothing=settings.LABEL_SMOOTHING)
 
@@ -76,8 +99,7 @@ for cur_model_name in settings.MODEL_NAME_LIST:
     
     # 컴퓨터 비전을 위한 전이 학습 튜토리얼에서는 옵티마이저로 SGD 사용
     # SGD 옵티마이저에 재학습 가능한 파라미터만 있는 리스트, 학습률, 모멘텀(관성) 전달해 객체 생성
-    # optimizer = optim.SGD(param_list, lr=settings.LEARNING_RATE, momentum=settings.OPTIM_MOMENTUM,
-    #                       weight_decay=settings.WEIGHT_DECAY)
+    # optimizer = optim.SGD(param_list, lr=settings.LEARNING_RATE, momentum=settings.OPTIM_MOMENTUM, weight_decay=settings.WEIGHT_DECAY)
     
     # 옵티마이저로 Adam을 쓴 버전, SGD와 바꿔가며 테스트
     optimizer = optim.Adam(param_list, lr=settings.LEARNING_RATE, weight_decay=settings.WEIGHT_DECAY)
@@ -119,12 +141,14 @@ for cur_model_name in settings.MODEL_NAME_LIST:
         history = {
             'train_loss': [], 'train_acc': [], 'val_loss': [], 'val_acc': []
         }
-        # 최저 val 손실, 최고 성능 모델 초기화
-        # 그리고 최고 성능 모델의 val 정확도 저장용 변수(최고 val 정확도 기록 아님)
-        best_val_loss = float('inf')
-        best_model = copy.deepcopy(model.state_dict())
-        best_model_acc = 0.0
 
+        # 최고 정확도, 최고 성능 모델 초기화
+        # 그리고 최고 성능 모델의 최저 손실 저장용 변수(진짜 최저 손실 기록 아님)
+        best_val_acc = 0.0
+        best_model = copy.deepcopy(model.state_dict())
+        best_model_loss = float('inf')
+
+        min_val_loss = float('inf') # 이게 진짜 조기 종료 판단용 최저 손실 기록
         early_stop_count = 0 # 조기 종료용 카운트 초기화
 
         try: # 중간에 학습이 끊겨도 모델을 저장할 수 있도록 try문 사용
@@ -142,52 +166,104 @@ for cur_model_name in settings.MODEL_NAME_LIST:
 
                 if settings.CAN_USE_SCHEDULER:
                     scheduler.step(val_loss) # val loss를 기준으로 학습률을 조정하겠다는 뜻
+     
+                history['train_loss'].append(train_loss)
+                # 정확도 객체는 파이토치의 텐서 객체로, 그대로 들어가면 충돌 또는 메모리 점유 위험 가능성 있음
+                # 따라서 item()을 붙여 순수한 숫자 데이터로 바꿔 넣는 것이 안전
+                history['train_acc'].append(train_acc.item())
+                history['val_loss'].append(val_loss)
+                history['val_acc'].append(val_acc.item())
 
-                if settings.CAN_DRAW_PLOT:
-                    history['train_loss'].append(train_loss)
-                    # 정확도 객체는 파이토치의 텐서 객체로, 그대로 들어가면 충돌 또는 메모리 점유 위험 가능성 있음
-                    # 따라서 item()을 붙여 순수한 숫자 데이터로 바꿔 넣는 것이 안전
-                    history['train_acc'].append(train_acc.item())
-                    history['val_loss'].append(val_loss)
-                    history['val_acc'].append(val_acc.item())
+                # 최고 성능 모델 저장은 정확도가 올랐을 때
+                if val_acc > best_val_acc:
+                    best_val_acc = val_acc
+                    best_model_loss = val_loss
+                    best_model = copy.deepcopy(model.state_dict()) # 최고 성능 모델 새로 저장
 
                 # 설정한 횟수만큼 연속으로 val loss의 최저 기록을 갱신하지 못하면 조기종료하도록 설정
-                if val_loss < best_val_loss:
-                    best_val_loss = val_loss
+                if val_loss < min_val_loss:
+                    min_val_loss = val_loss
                     early_stop_count = 0
-                    best_model_acc = val_acc
-                    best_model = copy.deepcopy(model.state_dict()) # 최고 성능 모델 새로 저장
                 else:
                     early_stop_count += 1
                     if early_stop_count >= settings.EARLY_STOP_PATIENCE: 
-                        print(f"{early_stop_count}회 연속 최저 손실({best_val_loss:.3f}) 갱신 실패, 학습 조기 종료")
+                        print(f"{early_stop_count}회 연속 최저 손실({min_val_loss:.3f}) 갱신 실패, 학습 조기 종료")
                         break  # 이번 모델 학습 반복문 탈출
                     else:
-                        print(f"최저 손실({best_val_loss:.3f}) 갱신 실패, 조기 종료 카운트: {early_stop_count} / {settings.EARLY_STOP_PATIENCE}")
+                        print(f"최저 손실({min_val_loss:.3f}) 갱신 실패, 조기 종료 카운트: {early_stop_count} / {settings.EARLY_STOP_PATIENCE}")
         except KeyboardInterrupt: # 학습을 끊는 건 컨트롤 C 눌러서 중간에 끈 경우가 대표적
             print("\n[학습 중 키보드 인터럽트로 중단]")
         except Exception as e:
             print(f"\n[학습 중 오류 발생: {e}]")
 
-        if best_val_loss != float('inf'): # 최고 모델의 최저 손실이 초기화값(무한대)가 아니면
+        if best_val_acc > 0.0: # 최고 모델의 최고 정확도가 0보다 크면
             model.load_state_dict(best_model)
 
             # 폴더 생성하기(exist_ok를 켜면 이미 폴더가 있어도 에러 없이 넘어감)
             os.makedirs(settings.SAVED_MODELS_FOLDER_NAME, exist_ok=True) 
 
-            # 학습한 데이터셋 이름, 학습시킨 모델 이름, 최저 손실값, 이 모델의 정확도를 합친 이름을 지닌 pytorch 파일 이름
-            save_file_name = f"{settings.DATA_SET_NAME}_{cur_model_name}_loss_{best_val_loss:.3f}_acc_{best_model_acc*100:.2f}.pth"
+            # 학습한 데이터셋 이름, 학습시킨 모델 이름, 이 모델의 최저 손실값, 최고 정확도를 합친 이름을 지닌 pytorch 파일 이름
+            save_file_name = f"{settings.DATA_SET_NAME}_{cur_model_name}_loss_{best_model_loss:.3f}_acc_{best_val_acc*100:.2f}.pth"
             save_path = os.path.join(settings.SAVED_MODELS_FOLDER_NAME, save_file_name) # 경로로 합치기
 
             torch.save(best_model, save_path) # 실제 모델 저장
 
+            # 모델하고 똑같은 이름을 가진 txt 파일에 하이퍼파라미터와 규제 기법 적용 여부 기록
+            setting_path = save_path.replace('.pth', '.txt') # 위의 경로에서 확장자만 txt로 대체
+
+            # with open()은 블록이 끝나면 파일을 자동으로 닫아줘서 close 생략 가능한 안전한 함수
+            with open(setting_path, "w", encoding="utf-8") as file: # w(쓰기 모드), 인코딩은 한글 안 깨지는 utf-8
+                file.write(f"학습률: {settings.LEARNING_RATE}, 드롭아웃 비율: {settings.DROPOUT_RATE}\n")
+                file.write(f"가중치 감쇠 정도: {settings.WEIGHT_DECAY}, 레이블 스무딩 비율: {settings.LABEL_SMOOTHING}\n")
+
+                if not settings.CAN_FREEZE_LAYERS:
+                    layer_state_string = "미세 조정(전부 unfreeze)"
+                elif settings.CAN_GRAD_MORE_LAYERS:
+                    can_grad_layers = settings.MODEL_INFO_DICT[cur_model_name][3]
+                    # 현재 모델에서 추가 학습 가능, 즉 동결 해제된 레이어 리스트를 가져와 join으로 쉼표 구분하며 항목 나열
+                    layer_state_string = f"부분 미세 조정(unfreeze 층: {', '.join(can_grad_layers)})"
+                else:
+                    layer_state_string = "동결(마지막 레이어만 unfreeze)"
+                file.write(f"학습 방식: {layer_state_string}\n")
+
+                if settings.CAN_USE_SCHEDULER:
+                    scheduler_state_string = f"적용(factor: {settings.SCHEDULER_FACTOR}, patience: {settings.SCHEDULER_PATIENCE})"
+                else:
+                    scheduler_state_string = " 미적용"
+                file.write(f"학습률 스케줄러: {scheduler_state_string}\n")
+
+                file.write(f"데이터 증대: {'적용' if settings.CAN_USE_AUGMENTATION else '미적용'}\n")
+
+                file.write(f"오버샘플링: {f'적용({settings.SAMPLER_MULTIPLIER}배)' if settings.CAN_USE_OVERSAMPLING else '미적용'}\n")
+
+                file.write("\n===학습 로그===\n")
+
+                # CSV 스타일로 써야 나중에 그래프 그려주는 사이트에서 적용하기 간편
+                file.write("Epoch,Train Loss,Train Accuracy,Val Loss,Val Accuracy\n")
+                for epo in range(len(history['train_loss'])):
+                    t_loss = history['train_loss'][epo]
+                    t_acc = history['train_acc'][epo] * 100
+                    v_loss = history['val_loss'][epo]
+                    v_acc = history['val_acc'][epo] * 100
+                    file.write(f"{epo+1},{t_loss:.4f},{t_acc:.2f},{v_loss:.4f},{v_acc:.2f}\n")
+
             print(f"\n[{cur_model_name} 최고 성능 모델 기록 및 저장]")
-            print(f"[ Val ] Loss: {best_val_loss:.3f} | Acc: {best_model_acc * 100:.3f}%")
+            print(f"[ Val ] Loss: {best_model_loss:.3f} | Acc: {best_val_acc * 100:.3f}%")
 
             if settings.CAN_DRAW_PLOT:
                 visualizer.draw_plot(history)
-        else: # 최저 손실이 초기값(무한대)라면, 아예 학습이 1에포크도 안 된 것
-            print("\n[최저 손실이 무한대이므로 모델 저장 없이 종료]")        
+        else: # 최고 모델의 정확도가 0이라면 학습이 정상 진행되지 않은 것
+            print("\n[최고 정확도가 0이므로 모델 저장 없이 종료]")        
+        
+        # 여러 모델을 연속으로 학습시키다 보니 속도 저하 및 메모리 부족 현상 발생
+        del best_model # del로 남아 있는 메모리 상 객체 참조를 제거
+    del model, optimizer, trainer, train_loader, val_loader
+
+    # GPU도 장치별 명령어로 캐시 메모리 강제 비우기
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
+    elif device.type == "mps":
+        torch.mps.empty_cache()
 
     print(f"\n--- {cur_model_name} 모델 실험 끝 ---")
 

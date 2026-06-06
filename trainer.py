@@ -1,5 +1,20 @@
 import torch
 
+def freeze_bn_buffers(module):
+    """ 배치 정규화 레이어 동결 함수
+
+    전이 학습할 때 보통 앞쪽 레이어의 가중치를 동결
+    그러나 파이토치에서는 model.train()을 호출하면 가중치를 동결해도
+    '배치 정규화 레이어'는 새로운 입력 데이터의 평균과 분산을 계산해 통계량을 자기가 업데이트해버림
+    따라서 가중치가 동결된 배치 정규화 레이어는 아예 평가 모드로 강제 고정해야 함
+    """
+    # 현재 레이어가 배치 정규화 레이어인지 검사
+    if isinstance(module, torch.nn.modules.batchnorm._BatchNorm):
+        # 해당 레이어의 가중치가 존재하고, 재학습이 안 되는 동결 상태라면
+        if module.weight is not None and module.weight.requires_grad == False:
+            # 확실하게 평가 모드로 전환해서 통계량 고정
+            module.eval()
+            
 class Trainer:
     """
     모델, 설정, 손실 함수, 옵티마이저를 받아와 모델 학습 및 평가를 진행하는 클래스
@@ -17,9 +32,14 @@ class Trainer:
 
         # 모델을 학습 모드로 설정해 드롭아웃 등을 활성화
         self.model.train()
+
+        # BN 네트워크의 나머지 부분을 학습하는 동안 레이어를 고정하는 방법 - 파이토치 논의(질답)
+        # https://discuss.pytorch.org/t/how-to-freeze-bn-layers-while-training-the-rest-of-network-mean-and-var-wont-freeze/89736/11
+        self.model.apply(freeze_bn_buffers)
         
         # 총 오차와 총 정답 수 초기화
         loss_sum, answer_sum = 0.0, 0
+        total_samples = 0 # 진짜 처리한 데이터 개수
         
         """ 참고한 구조
         컴퓨터 비전을 위한 전이 학습 튜토리얼 - 파이토치 공식 튜토리얼
@@ -60,9 +80,10 @@ class Trainer:
             # 이후 예측 인덱스 리스트와 실제 정답 인덱스 리스트를 비교
             # 파이토치에서 True는 1로 계산되므로 그 합이 결국 이번 배치에서 맞춘 정답 개수
             answer_sum += torch.sum(preds == labels.data)
+            total_samples += inputs.size(0) # 이번 배치 크기만큼 더해서 진짜 처리한 데이터 개수 계산
             
         # 전체 데이터 개수로 나눈 평균 오차와 정확도를 반환
-        return loss_sum / len(loader.dataset), answer_sum.double() / len(loader.dataset)
+        return loss_sum / total_samples, answer_sum.double() / total_samples
 
     def evaluate(self, loader):
         """ 모델 평가용 로더를 가져와 한 에포크의 평균 오차와 정확도를 반환하는 메서드
@@ -72,6 +93,7 @@ class Trainer:
         self.model.eval()
         
         loss_sum, answer_sum = 0.0, 0
+        total_samples = 0
         
         # with는 특정 상태나 환경을 잠깐 활성화했다가 블록을 벗어나면 자동으로 꺼주는 역할
         # 평가할 때는 가중치를 수정할 필요가 없으므로 기울기 계산을 꺼서 메모리를 절약하는 것이 나음
@@ -87,5 +109,6 @@ class Trainer:
                 loss_sum += loss.item() * inputs.size(0)
                 _, preds = torch.max(outputs, 1)
                 answer_sum += torch.sum(preds == labels.data)
+                total_samples += inputs.size(0)
         
-        return loss_sum / len(loader.dataset), answer_sum.double() / len(loader.dataset)
+        return loss_sum / total_samples, answer_sum.double() / total_samples

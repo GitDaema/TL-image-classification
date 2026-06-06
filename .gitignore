@@ -1,7 +1,7 @@
 ### [Data & Assets] ###
 # 용량이 큰 데이터셋 폴더들
 data/
-ani/
+my_models/
 *.zip
 *.tar.gz
 
