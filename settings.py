@@ -8,7 +8,8 @@ from torchvision import models
 DIR_DICT = { 
     'ani' : ('data/ani/train', 'data/ani/val'),         
     'CUB200' : ('data/CUB200/train', 'data/CUB200/val'), 
-    'hymenoptera' : ('data/hymenoptera_data/train', 'data/hymenoptera_data/val'), 
+    'hymenoptera' : ('data/hymenoptera_data/train', 'data/hymenoptera_data/val'),
+    'mini_Gastrovision' : ('data/mini_Gastrovision/train', 'data/mini_Gastrovision/val'), 
 }
 
 # 경로 설정
@@ -19,7 +20,7 @@ SAVED_MODELS_FOLDER_NAME = "my_models"
 LOADING_MODEL_NAME = ""
 
 # 테스트할 모델 리스트
-MODEL_NAME_LIST = ['resnet50']
+MODEL_NAME_LIST = ['efficientnet_b4']
 MODEL_INFO_DICT = {
     'resnet50': (models.resnet50, models.ResNet50_Weights, 'fc', ['layer3', 'layer4']),
     'densenet121': (models.densenet121, models.DenseNet121_Weights, 'classifier', ['features.denseblock3', 'features.transition3', 'features.denseblock4', 'features.norm5']),
@@ -183,5 +184,10 @@ SAMPLER_MULTIPLIER = 2 # 에포크 당 학습하는 중복 데이터를 몇 배�
 # 마지막 레이어와 이전 초중반 레이어의 학습률에 차이를 두는 차등 학습률 적용 여부
 CAN_USE_DIFFERENTIAL_LEARNING_RATE = False
 BASE_LEARNING_RATE_MULTIPLIER = 0.1 # 초중반 레이어 학습률에 곱할 값
+
+# 두 이미지를 섞는 믹스업, 한 이미지의 일부를 잘라 다른 이미지에 붙이는 컷믹스 기법 적용 여부 
+CAN_USE_MIXUP_CUTMIX = False 
+MIXUP_ALPHA = 0.2 # 믹스업 강도
+CUTMIX_ALPHA = 1.0 # 컷믹스 강도
 
 CAN_DRAW_PLOT = False # 임시 그래프 그리기 기능 온오프

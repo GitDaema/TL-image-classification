@@ -79,7 +79,7 @@ for cur_model_name in settings.MODEL_NAME_LIST:
         print(f"오버샘플링 적용 중: 이미지 {settings.SAMPLER_MULTIPLIER}배, 총 {total_num_samples}장")
 
     # 가중치 배열을 파이토치로 변환하고 현재 장치로 이동
-    class_weights = torch.FloatTensor(weights).to(device) 
+    # class_weights = torch.FloatTensor(weights).to(device) 
 
     # 조절된 가중치 반영
     # criterion = nn.CrossEntropyLoss(weight = class_weights, label_smoothing=settings.LABEL_SMOOTHING)
@@ -137,7 +137,8 @@ for cur_model_name in settings.MODEL_NAME_LIST:
                                                                             , patience=settings.SCHEDULER_PATIENCE)
 
     # 학습용 엔진에 모델, 설정, 손실 함수, 옵티마이저를 전달해 객체 생성
-    trainer = Trainer(model, device, criterion, optimizer)
+    # 믹스업과 컷믹스를 위해 클래스 수도 전달
+    trainer = Trainer(model, device, criterion, optimizer, data_manager.num_classes)
 
     # 불러올 모델이 있는지 확인하기 위해 폴더와 이름 경로 합치기
     model_path = os.path.join(settings.SAVED_MODELS_FOLDER_NAME, settings.LOADING_MODEL_NAME + ".pth")

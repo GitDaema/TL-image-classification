@@ -1,4 +1,6 @@
 import torch
+import settings
+from torchvision.transforms import v2
 
 def freeze_bn_buffers(module):
     """ 배치 정규화 레이어 동결 함수
@@ -19,12 +21,23 @@ class Trainer:
     """
     모델, 설정, 손실 함수, 옵티마이저를 받아와 모델 학습 및 평가를 진행하는 클래스
     """
-    def __init__(self, model, device, criterion, optimizer):
+    def __init__(self, model, device, criterion, optimizer, num_classes=None):
         # to(장치)로 모델을 설정에서 정한 최적의 장치로 보냄
         self.model = model.to(device)
         self.device = device
         self.criterion = criterion
         self.optimizer = optimizer
+
+        # 믹스업은 두 이미지를 투명하게 겹치는 기법 
+        # 컷 믹스는 한 이미지의 일부 영역을 다른 이미지에서 잘라와 대신해 붙이는 것
+        # 이러면 레이블이 원-핫에서 소프트 레이블로 바뀜(정답 확신도가 a 70%, b 30%처럼 나뉨)
+        # 06-image-classification/05-data-augmentation.md - 깃허브
+        # https://github.com/jsonpassion/forge-tutorial-vision/blob/main/06-image-classification/05-data-augmentation.md
+        self.mixup_cutmix = None
+        if settings.CAN_USE_MIXUP_CUTMIX and num_classes is not None:
+            mixup = v2.MixUp(num_classes=num_classes, alpha=settings.MIXUP_ALPHA)
+            cutmix = v2.CutMix(num_classes=num_classes, alpha=settings.CUTMIX_ALPHA)
+            self.mixup_cutmix = v2.RandomChoice([mixup, cutmix]) # 컷믹스와 믹스업 중 하나 랜덤 선택
 
     def train_epoch(self, loader):
         """ 모델 학습용 로더를 가져와 한 에포크를 학습하고 평균 오차와 정확도를 반환하는 메서드
@@ -52,6 +65,10 @@ class Trainer:
             # 마찬가지로 to()를 이용해 데이터를 설정한 장치로 보내기
             inputs, labels = inputs.to(self.device), labels.to(self.device)
             
+            if settings.CAN_USE_MIXUP_CUTMIX and self.mixup_cutmix is not None:
+                # 이미지와 레이블을 믹스업 또는 컷믹스 기법에 맞게 합성
+                inputs, labels = self.mixup_cutmix(inputs, labels)
+
             # 1. 이전 배치의 계산 결과가 영향을 주지 않도록 기울기 초기화
             self.optimizer.zero_grad()
             
@@ -77,9 +94,14 @@ class Trainer:
             # 여기에서는 예측 인덱스 리스트만 저장
             _, preds = torch.max(outputs, 1)
 
+            if labels.ndim > 1: # 레이블이 2차원 확률 배열이면 믹스업 상태
+                last_labels = torch.max(labels, 1)[1] # 가장 확률이 높은 클래스를 정답으로 간주
+            else: # 1차원 정수 배열이면 믹스업 아니니 그대로
+                last_labels = labels.data
+
             # 이후 예측 인덱스 리스트와 실제 정답 인덱스 리스트를 비교
             # 파이토치에서 True는 1로 계산되므로 그 합이 결국 이번 배치에서 맞춘 정답 개수
-            answer_sum += torch.sum(preds == labels.data)
+            answer_sum += torch.sum(preds == last_labels)
             total_samples += inputs.size(0) # 이번 배치 크기만큼 더해서 진짜 처리한 데이터 개수 계산
             
         # 전체 데이터 개수로 나눈 평균 오차와 정확도를 반환
