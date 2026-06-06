@@ -67,7 +67,9 @@ class Trainer:
             
             if settings.CAN_USE_MIXUP_CUTMIX and self.mixup_cutmix is not None:
                 # 이미지와 레이블을 믹스업 또는 컷믹스 기법에 맞게 합성
-                inputs, labels = self.mixup_cutmix(inputs, labels)
+                # 0 ~ 1 사이 실수를 랜덤으로 가져와서 설정한 확률보다 작은지 확인하는 식
+                if torch.rand(1).item() < settings.MIXUP_CUTMIX_RATE:
+                    inputs, labels = self.mixup_cutmix(inputs, labels)
 
             # 1. 이전 배치의 계산 결과가 영향을 주지 않도록 기울기 초기화
             self.optimizer.zero_grad()

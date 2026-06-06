@@ -263,6 +263,8 @@ for cur_model_name in settings.MODEL_NAME_LIST:
 
                 file.write(f"데이터 증대: {'적용' if settings.CAN_USE_AUGMENTATION else '미적용'}\n")
                 file.write(f"오버샘플링: {f'적용({settings.SAMPLER_MULTIPLIER}배)' if settings.CAN_USE_OVERSAMPLING else '미적용'}\n")
+                file.write(f"믹스업/컷믹스: {f'적용 (비율: {settings.MIXUP_CUTMIX_RATE
+                }, 믹스업 a: {settings.MIXUP_ALPHA}, 컷믹스 a: {settings.CUTMIX_ALPHA})' if settings.CAN_USE_MIXUP_CUTMIX else '미적용'}\n")
 
                 file.write("\n===학습 로그===\n")
 

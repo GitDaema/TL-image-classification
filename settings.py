@@ -20,7 +20,7 @@ SAVED_MODELS_FOLDER_NAME = "my_models"
 LOADING_MODEL_NAME = ""
 
 # 테스트할 모델 리스트
-MODEL_NAME_LIST = ['efficientnet_b4']
+MODEL_NAME_LIST = ['resnet50']
 MODEL_INFO_DICT = {
     'resnet50': (models.resnet50, models.ResNet50_Weights, 'fc', ['layer3', 'layer4']),
     'densenet121': (models.densenet121, models.DenseNet121_Weights, 'classifier', ['features.denseblock3', 'features.transition3', 'features.denseblock4', 'features.norm5']),
@@ -189,5 +189,6 @@ BASE_LEARNING_RATE_MULTIPLIER = 0.1 # 초중반 레이어 학습률에 곱할 �
 CAN_USE_MIXUP_CUTMIX = False 
 MIXUP_ALPHA = 0.2 # 믹스업 강도
 CUTMIX_ALPHA = 1.0 # 컷믹스 강도
+MIXUP_CUTMIX_RATE = 0.5 # 믹스업 또는 컷믹스 적용 비율
 
 CAN_DRAW_PLOT = False # 임시 그래프 그리기 기능 온오프
