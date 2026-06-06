@@ -91,11 +91,37 @@ for cur_model_name in settings.MODEL_NAME_LIST:
     # 가중치 재학습 여부를 False로 한 것들은 옵티마이저에 넣을 필요가 없음
     # 따라서 실제로 학습할 파라미터들만 모으는 리스트를 따로 생성
     # 설정에 따라 마지막 레이어만 들어가거나, 추가로 지정한 레이어들이 함께 포함됨
-    param_list = [] 
+    param_list = []
 
-    for param in model.parameters():
-        if param.requires_grad == True:
-            param_list.append(param) 
+    # 최종 분류층과 추가로 연 다른 레이어들의 학습률을 다르게 주는 차등 학습률 적용
+    # 앞쪽 레이어는 가장자리, 모양 같은 일반적인 특징을 학습
+    # 앞쪽에 학습된 가중치는 이미 제 역할을 잘 수행 중이므로 크게 변경할 필요 없음
+    # 차등 학습률을 이용한 전이 학습 - 미디움 TDS 아카이브 
+    # https://medium.com/data-science/transfer-learning-using-differential-learning-rates-638455797f00
+    if settings.CAN_USE_DIFFERENTIAL_LEARNING_RATE:
+        # 마지막 레이어 이름만 가져오기
+        _, _, last_layer_name, _ = settings.MODEL_INFO_DICT[cur_model_name]
+
+        base_params = [] # 학습률 낮춰서 미세조정할 백본 레이어 가중치 리스트
+        classifier_params = [] # 그대로 학습률 적용할 최종 레이어 가중치 리스트
+
+        for name, param in model.named_parameters():
+            if param.requires_grad: # 학습이 가능한 레이어면
+                if name.startswith(last_layer_name): # 마지막 레이어 이름과 같은지 확인
+                    classifier_params.append(param)
+                else:
+                    base_params.append(param)
+
+        # ReferenceAPI / torch.potim - 파이토치 문서 
+        # https://docs.pytorch.org/docs/2.12/optim.html
+        param_list = [ # 마지막 레이어 이름이면 그대로, 아니면 학습률 낮게
+            {'params': base_params, 'lr': settings.LEARNING_RATE * settings.BASE_LEARNING_RATE_MULTIPLIER },
+            { 'params': classifier_params, 'lr': settings.LEARNING_RATE }
+        ]
+    else:
+        for param in model.parameters():
+            if param.requires_grad == True:
+                param_list.append(param) 
     
     # 컴퓨터 비전을 위한 전이 학습 튜토리얼에서는 옵티마이저로 SGD 사용
     # SGD 옵티마이저에 재학습 가능한 파라미터만 있는 리스트, 학습률, 모멘텀(관성) 전달해 객체 생성
@@ -213,8 +239,10 @@ for cur_model_name in settings.MODEL_NAME_LIST:
 
             # with open()은 블록이 끝나면 파일을 자동으로 닫아줘서 close 생략 가능한 안전한 함수
             with open(setting_path, "w", encoding="utf-8") as file: # w(쓰기 모드), 인코딩은 한글 안 깨지는 utf-8
-                file.write(f"학습률: {settings.LEARNING_RATE}, 드롭아웃 비율: {settings.DROPOUT_RATE}\n")
-                file.write(f"가중치 감쇠 정도: {settings.WEIGHT_DECAY}, 레이블 스무딩 비율: {settings.LABEL_SMOOTHING}\n")
+                file.write(f"학습률: {settings.LEARNING_RATE}\n") 
+                file.write(f"차등 학습률: {f'적용({settings.BASE_LEARNING_RATE_MULTIPLIER})' if settings.CAN_USE_DIFFERENTIAL_LEARNING_RATE else '미적용'}\n")
+
+                file.write(f"드롭아웃 비율: {settings.DROPOUT_RATE}, 가중치 감쇠 정도: {settings.WEIGHT_DECAY}, 레이블 스무딩 비율: {settings.LABEL_SMOOTHING}\n")
 
                 if not settings.CAN_FREEZE_LAYERS:
                     layer_state_string = "미세 조정(전부 unfreeze)"
@@ -233,7 +261,6 @@ for cur_model_name in settings.MODEL_NAME_LIST:
                 file.write(f"학습률 스케줄러: {scheduler_state_string}\n")
 
                 file.write(f"데이터 증대: {'적용' if settings.CAN_USE_AUGMENTATION else '미적용'}\n")
-
                 file.write(f"오버샘플링: {f'적용({settings.SAMPLER_MULTIPLIER}배)' if settings.CAN_USE_OVERSAMPLING else '미적용'}\n")
 
                 file.write("\n===학습 로그===\n")

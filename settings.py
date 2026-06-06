@@ -12,14 +12,14 @@ DIR_DICT = {
 }
 
 # 경로 설정
-DATA_SET_NAME = 'CUB200'
+DATA_SET_NAME = 'ani'
 TRAIN_DIR, VAL_DIR = DIR_DICT[DATA_SET_NAME]
 
 SAVED_MODELS_FOLDER_NAME = "my_models"
 LOADING_MODEL_NAME = ""
 
 # 테스트할 모델 리스트
-MODEL_NAME_LIST = ['efficientnet_b4']
+MODEL_NAME_LIST = ['resnet50']
 MODEL_INFO_DICT = {
     'resnet50': (models.resnet50, models.ResNet50_Weights, 'fc', ['layer3', 'layer4']),
     'densenet121': (models.densenet121, models.DenseNet121_Weights, 'classifier', ['features.denseblock3', 'features.transition3', 'features.denseblock4', 'features.norm5']),
@@ -179,5 +179,9 @@ CAN_USE_AUGMENTATION = True
 # 데이터가 적고 클래스 데이터 수가 불균형할 때 이를 맞춰주는 오버샘플링 적용 여부
 CAN_USE_OVERSAMPLING = True
 SAMPLER_MULTIPLIER = 2 # 에포크 당 학습하는 중복 데이터를 몇 배로 늘릴지
+
+# 마지막 레이어와 이전 초중반 레이어의 학습률에 차이를 두는 차등 학습률 적용 여부
+CAN_USE_DIFFERENTIAL_LEARNING_RATE = False
+BASE_LEARNING_RATE_MULTIPLIER = 0.1 # 초중반 레이어 학습률에 곱할 값
 
 CAN_DRAW_PLOT = False # 임시 그래프 그리기 기능 온오프
