@@ -26,6 +26,11 @@ env/
 anaconda3/
 .conda/
 
+### [Test] ###
+# 테스트용 임시 코드 파일
+predict.py
+confusion_matrix_maker.py
+
 ### [Jupyter Notebook] ###
 # 주피터 자동 저장 체크포인트
 .ipynb_checkpoints/

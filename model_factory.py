@@ -5,6 +5,7 @@ import torch.nn as nn
 from torchvision import models, transforms
 
 import settings
+import augmentation_maker
 
 class ModelFactory:  
     def create_model_and_transforms(model_name, num_classes):
@@ -24,7 +25,7 @@ class ModelFactory:
         그래서 서로 다른 부분만 딕셔너리에 저장하고 공통 부분만 따로 떼어 구현
         """
         
-        model_constructor, weight_class, last_layer_name, more_grad_layer_name = settings.MODEL_INFO_DICT[model_name]
+        model_constructor, weight_class, last_layer_name, more_grad_layer_name, image_size = settings.MODEL_INFO_DICT[model_name]
 
         weights = weight_class.DEFAULT # DEFALUT는 파이토치가 추천하는 최고 성능 가중치
         model = model_constructor(weights=weights)
@@ -97,52 +98,21 @@ class ModelFactory:
         normalize = transforms.Normalize(mean=weights_transforms.mean, std=weights_transforms.std)
 
         if settings.CAN_USE_AUGMENTATION:
-            # transform.Compose는 여러 전처리 및 데이터 증강 기법을 하나의 파이프라인으로 묶어주는 객체
-            # 안에 들어간 리스트에 적힌 순서대로 적용되니 주의, ToTensor, 정규화 맨 뒤로
-            # 단, 이미지의 일부를 무작위로 지우는 것은 '최종 결정 이후의 변화'이니 다 끝나고 진행해야 함
 
-            # 크기 조절하는 이유는 여러 이미지를 동일 행렬 모양으로 묶어 계산하면서, 최종 분류층의 고정 입력에 맞추기 위함
-            # 224인 이유는 반으로 계속 나누어도 딱 떨어지다가 마지막에 홀수인 7이 남아서 사진의 정중앙을 찾을 수 있기 때문 
-            train_transform = transforms.Compose([
-                # scale(최소, 최대) 비율만큼의 이미지 영역을 무작위로 오려내서 224 크기로 다시 확대 
-                transforms.RandomResizedCrop((224, 224), scale=(0.8, 1.0)), 
-                # transforms.Resize((224, 224)),
+            # 원활한 증강 스위칭을 위해 다른 파일에서 증강 규칙을 받아옴
+            train_transform = augmentation_maker.get_augmentation(settings.AUGMENTATION_MODE_NAME, image_size, normalize)
 
-                # 상하좌우로 이미지를 translate(최대, 최대)만큼 평행 이동
-                transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),
-
-                transforms.RandomHorizontalFlip(p=0.5), # 좌우 반전, p는 확률(0.0 ~ 1.0)
-                transforms.RandomRotation(degrees=15), # 이미지 회전, -degrees ~ degrees 사이 회전각 랜덤
-
-                # 밝기, 대비, 채도, 색조를 무작위로 변경
-                # 최대 얼마나 변동(플러스 마이너스)할 것인지 비율
-                transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05),
-
-                # 선명도 조절, sharpness_factor는 원본보다 몇 배 선명하게 만들지, p는 확률
-                transforms.RandomAdjustSharpness(sharpness_factor=2.0, p=0.3),
-
-                # 가우시안 블러(흐림 효과)를 적용해 저화질처럼 흐릿하게 보이게, p는 확률
-                # 커널 크기는 흐림 필터 크기(중앙이 있어야 해서 반드시 홀수), sigma(최소, 최대) 범위 내 흐림 강도
-                transforms.RandomApply([transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0))], p=0.1),
-
-                transforms.ToTensor(),
-                normalize, 
-
-                # p만큼의 확률로, 이미지 전체에서 scale(최소, 최대) 비율만큼의 영역을 무작위로 지움 
-                # value 값을 random으로 하면 무작위 컬러 픽셀로 채우니 흑백/컬러 분류 상관 없이 0으로 통일 
-                transforms.RandomErasing(p=0.2, scale=(0.02, 0.05), value=0)
-            ])
             # val 때도 마찬가지로 Resize로 최종 분류층을 위한 크기 통일은 필수
             # 하지만 검증에 쓸 문제 이미지를 무작위로 변형하면 매번 정확도가 불안정해져서 성능을 제대로 측정할 수 없음
             # 따라서 좌우 반전이나 회전 같은 증대 기법을 val에서 사용해서는 안 됨  
             val_transform = transforms.Compose([
-                transforms.Resize((224, 224)),
+                transforms.Resize(image_size),
                 transforms.ToTensor(),
                 normalize
             ])
         else: # 데이터 증대 안 할 때도 모델이 항상 동일한 크기와 정규화를 거치도록 고정
             normalized_transform = transforms.Compose([
-                transforms.Resize((224, 224)),
+                transforms.Resize(image_size),
                 transforms.ToTensor(),
                 normalize
             ])

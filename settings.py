@@ -10,22 +10,29 @@ DIR_DICT = {
     'CUB200' : ('data/CUB200/train', 'data/CUB200/val'), 
     'hymenoptera' : ('data/hymenoptera_data/train', 'data/hymenoptera_data/val'),
     'mini_Gastrovision' : ('data/mini_Gastrovision/train', 'data/mini_Gastrovision/val'), 
+    'mini_sec_Gastrovision' : ('data/mini_sec_Gastrovision/train', 'data/mini_sec_Gastrovision/val'), 
 }
 
 # 경로 설정
-DATA_SET_NAME = 'ani'
+DATA_SET_NAME = 'mini_sec_Gastrovision'
 TRAIN_DIR, VAL_DIR = DIR_DICT[DATA_SET_NAME]
 
 SAVED_MODELS_FOLDER_NAME = "my_models"
-LOADING_MODEL_NAME = ""
+LOADING_MODEL_NAME = "mini_gast_best/"
 
 # 테스트할 모델 리스트
-MODEL_NAME_LIST = ['resnet50']
+MODEL_NAME_LIST = ['efficientnet_b0']
 MODEL_INFO_DICT = {
-    'resnet50': (models.resnet50, models.ResNet50_Weights, 'fc', ['layer3', 'layer4']),
-    'densenet121': (models.densenet121, models.DenseNet121_Weights, 'classifier', ['features.denseblock3', 'features.transition3', 'features.denseblock4', 'features.norm5']),
-    'vgg16': (models.vgg16, models.VGG16_Weights, 'classifier', ['features.19', 'features.21', 'features.24', 'features.26', 'features.28']),
-    'efficientnet_b4': (models.efficientnet_b4, models.EfficientNet_B4_Weights, 'classifier', ['features.5', 'features.6', 'features.7']),
+    'resnet50': (models.resnet50, models.ResNet50_Weights, 'fc', 
+                ['layer3', 'layer4'], (224, 224)),
+    'densenet121': (models.densenet121, models.DenseNet121_Weights, 'classifier', 
+                ['features.denseblock3', 'features.transition3', 'features.denseblock4', 'features.norm5'], (224, 224)),
+    'vgg16': (models.vgg16, models.VGG16_Weights, 'classifier', 
+                ['features.19', 'features.21', 'features.24', 'features.26', 'features.28'], (224, 224)),
+    'efficientnet_b0': (models.efficientnet_b0, models.EfficientNet_B0_Weights, 'classifier', 
+                ['features.6', 'features.7', 'features.8'], (224, 224)),
+    'efficientnet_b4': (models.efficientnet_b4, models.EfficientNet_B4_Weights, 'classifier', 
+                ['features.4', 'features.5', 'features.6', 'features.7'], (380, 380)),
 }
 { """ 모델 정보 딕셔너리(모델 이름 : 모델 정보 튜플)
 
@@ -35,6 +42,7 @@ https://docs.pytorch.org/vision/main/models.html
 두번째는 가중치, 정확히는 가중치 클래스로, 여기에는 여러가지 가중치가 저장되어 있음
 세 번째는 모델의 마지막 레이어 이름
 네 번째는 추가 재학습 필요 레이어 이름 리스트
+다섯 번째는 사전 학습된 이미지 크기(모델별로 입력 사이즈가 다름)
 """
 
 """ 추가 재학습 필요 레이어 선정 참고 자료
@@ -92,7 +100,7 @@ def make_layers(cfg: list[Union[str, int]], batch_norm: bool = False) -> nn.Sequ
 
 ======
 
-EfficientNet_b4
+EfficientNet_b0, EfficientNet_b4
 pytorch / vision / torchvision / models / efficientnet.py 깃허브 코드
 https://github.com/pytorch/vision/blob/main/torchvision/models/efficientnet.py
 features.0(첫 Conv) ... features.4(MBConv), features.5(MBConv), features.6(MBConv), 
@@ -101,8 +109,17 @@ features.7(마지막 Conv2dNormActivation) ... classifier (마지막 레이어)
 MBConv는 역전된 잔차 블록으로, 비교적 좁은 입력 계층을 더 넓은 내부 계층에 매핑하고, 그 내부 레이어가 좁은 출력 계층으로 매핑을 전환함
 https://kr.linkedin.com/pulse/anatomy-high-performance-mbconv-block-andrew-lavin?tl=ko
 
-반복문을 돌며 순서대로 MBConv 블록들을 self.features 리스트에 append 한 뒤 
-마지막에 최종 Conv 층을 추가하고 묶어줌, 이 과정에서 0 ~ 7까지 통재로 인덱스가 부여
+반복문을 돌며 순서대로 MBConv 블록들을 self.features 리스트에 append 한 뒤 마지막에 최종 Conv 층을 추가하고 묶어줌
+
+버전에 따라 sequential 구조의 최종 인덱스 개수가 다름
+b0는 features 리스트가 0번부터 8번까지 생성됨 (총 9개 블록)
+features.0(첫 Conv) ... features.6(MBConv), features.7(MBConv), 
+features.8(마지막 Conv2dNormActivation) ... classifier (마지막 레이어)
+
+b4는 0번부터 7번까지만 생성됨 (총 8개 블록)
+features.0(첫 Conv) ... features.4(MBConv), features.5(MBConv), features.6(MBConv), 
+features.7(마지막 Conv2dNormActivation) ... classifier (마지막 레이어)
+
 for cnf in inverted_residual_setting:
     stage: list[nn.Module] = []
     for _ in range(cnf.num_layers):
@@ -176,10 +193,12 @@ SCHEDULER_PATIENCE = 5 # val loss가 몇 에포크 동안 안 줄어들면 학�
 
 # 주어진 데이터를 좌우 반전, 회전 등 인위적으로 늘리는 데이터 증대 적용 여부
 CAN_USE_AUGMENTATION = True
+AUGMENTATION_MODE_NAME = '' # 증강 설정 모드 이름 
+# 모드 스위칭 복붙용 super for_gast
 
 # 데이터가 적고 클래스 데이터 수가 불균형할 때 이를 맞춰주는 오버샘플링 적용 여부
 CAN_USE_OVERSAMPLING = True
-SAMPLER_MULTIPLIER = 2 # 에포크 당 학습하는 중복 데이터를 몇 배로 늘릴지
+SAMPLER_MULTIPLIER = 1 # 에포크 당 학습하는 중복 데이터를 몇 배로 늘릴지
 
 # 마지막 레이어와 이전 초중반 레이어의 학습률에 차이를 두는 차등 학습률 적용 여부
 CAN_USE_DIFFERENTIAL_LEARNING_RATE = False
